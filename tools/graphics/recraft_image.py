@@ -40,7 +40,7 @@ class RecraftImage(BaseTool):
         "Set FAL_KEY to your fal.ai API key.\n"
         "  Get one at https://fal.ai/dashboard/keys"
     )
-    agent_skills = []
+    agent_skills = ["recraft-image"]
 
     capabilities = [
         "generate_image",

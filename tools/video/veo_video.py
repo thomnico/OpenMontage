@@ -44,7 +44,7 @@ class VeoVideo(BaseTool):
         "Set FAL_KEY or FAL_AI_API_KEY to your fal.ai API key.\n"
         "  Get one at https://fal.ai/dashboard/keys"
     )
-    agent_skills = ["ai-video-gen"]
+    agent_skills = ["fal-video-prompting", "ai-video-gen"]
 
     capabilities = ["text_to_video", "image_to_video", "reference_to_video", "first_last_frame_to_video"]
     supports = {

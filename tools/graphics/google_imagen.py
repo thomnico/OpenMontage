@@ -60,7 +60,7 @@ class GoogleImagen(BaseTool):
         "Set GOOGLE_API_KEY (or GEMINI_API_KEY) to your Google AI API key.\n"
         "  Get one at https://aistudio.google.com/apikey"
     )
-    agent_skills = []
+    agent_skills = ["google-imagen"]
 
     capabilities = ["generate_image", "generate_illustration", "text_to_image"]
     supports = {

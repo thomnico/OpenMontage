@@ -73,7 +73,7 @@ class DirectClipSearch(BaseTool):
         "  UNSPLASH_ACCESS_KEY for Unsplash (see https://unsplash.com/documentation)\n"
         "  archive.org, nasa, and wikimedia work without API keys"
     )
-    agent_skills = []
+    agent_skills = ["stock-media-search"]
 
     capabilities = [
         "multi_source_search",

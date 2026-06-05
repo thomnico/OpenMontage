@@ -37,7 +37,7 @@ class PexelsVideo(BaseTool):
         "Set PEXELS_API_KEY to your Pexels API key.\n"
         "  Get one free at https://www.pexels.com/api/"
     )
-    agent_skills = []
+    agent_skills = ["stock-media-search"]
 
     capabilities = ["search_video", "download_video", "stock_video"]
     supports = {
