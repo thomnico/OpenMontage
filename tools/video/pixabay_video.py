@@ -37,7 +37,7 @@ class PixabayVideo(BaseTool):
         "Set PIXABAY_API_KEY to your Pixabay API key.\n"
         "  Get one free at https://pixabay.com/api/docs/"
     )
-    agent_skills = []
+    agent_skills = ["stock-media-search"]
 
     capabilities = ["search_video", "download_video", "stock_video"]
     supports = {

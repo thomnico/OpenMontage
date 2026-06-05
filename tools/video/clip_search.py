@@ -70,7 +70,7 @@ class ClipSearch(BaseTool):
         "pip install numpy transformers torch\n"
         "Requires a corpus built by corpus_builder at <corpus_dir>."
     )
-    agent_skills = []
+    agent_skills = ["stock-media-search"]
 
     capabilities = [
         "text_to_clip_ranking",
