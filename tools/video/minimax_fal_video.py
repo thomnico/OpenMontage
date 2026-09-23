@@ -1,4 +1,4 @@
-"""MiniMax H3 (Hailuo 03) generation through fal.ai."""
+"""MiniMax H3 (Hailuo 03) and H3 Max generation through fal.ai."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from tools.base_tool import (
 
 class MiniMaxFalVideo(BaseTool):
     name = "minimax_fal_video"
-    version = "0.1.0"
+    version = "0.2.0"
     tier = ToolTier.GENERATE
     capability = "video_generation"
     provider = "minimax"
@@ -58,6 +58,16 @@ class MiniMaxFalVideo(BaseTool):
         "required": ["prompt"],
         "properties": {
             "prompt": {"type": "string"},
+            "model": {
+                "type": "string",
+                "enum": ["hailuo-03", "h3-max"],
+                "default": "hailuo-03",
+                "description": (
+                    "fal.ai MiniMax family. 'hailuo-03' renders 2K and supports "
+                    "reference_to_video. 'h3-max' is the prompt-adherence variant: "
+                    "768P/480P, text_to_video and image_to_video only."
+                ),
+            },
             "operation": {
                 "type": "string",
                 "enum": ["text_to_video", "image_to_video", "reference_to_video"],
@@ -74,6 +84,18 @@ class MiniMaxFalVideo(BaseTool):
             "reference_image_urls": {"type": "array", "items": {"type": "string"}},
             "reference_video_urls": {"type": "array", "items": {"type": "string"}},
             "reference_audio_urls": {"type": "array", "items": {"type": "string"}},
+            "resolution": {
+                "type": "string",
+                "enum": ["768P", "480P"],
+                "default": "768P",
+                "description": "h3-max only. hailuo-03 is always rendered at 2K.",
+            },
+            "prompt_expansion_mode": {
+                "type": "string",
+                "enum": ["balanced", "fast", "quality"],
+                "default": "balanced",
+                "description": "h3-max only.",
+            },
             "output_path": {"type": "string"},
         },
     }
@@ -83,7 +105,14 @@ class MiniMaxFalVideo(BaseTool):
     retry_policy = RetryPolicy(
         max_retries=2, retryable_errors=["rate_limit", "timeout"]
     )
-    idempotency_key_fields = ["prompt", "operation", "duration", "aspect_ratio"]
+    idempotency_key_fields = [
+        "prompt",
+        "model",
+        "operation",
+        "duration",
+        "aspect_ratio",
+        "resolution",
+    ]
     side_effects = ["writes video file to output_path", "calls fal.ai API"]
     user_visible_verification = ["Watch the result and verify native audio"]
 
@@ -94,8 +123,24 @@ class MiniMaxFalVideo(BaseTool):
     def get_status(self) -> ToolStatus:
         return ToolStatus.AVAILABLE if self._api_key() else ToolStatus.UNAVAILABLE
 
+    # Per-second list prices. h3-max promotional pricing is not assumed.
+    _RATE_USD_PER_SECOND = {
+        ("hailuo-03", "2K"): 0.19,
+        ("h3-max", "768P"): 0.08,
+        ("h3-max", "480P"): 0.05,
+    }
+
     def estimate_cost(self, inputs: dict[str, Any]) -> float:
-        return round(0.19 * int(inputs.get("duration", 5)), 2)
+        model = inputs.get("model", "hailuo-03")
+        resolution = self._resolution_for(model, inputs)
+        rate = self._RATE_USD_PER_SECOND.get((model, resolution), 0.19)
+        return round(rate * int(inputs.get("duration", 5)), 2)
+
+    @staticmethod
+    def _resolution_for(model: str, inputs: dict[str, Any]) -> str:
+        if model == "h3-max":
+            return str(inputs.get("resolution", "768P")).upper()
+        return "2K"
 
     def estimate_runtime(self, inputs: dict[str, Any]) -> float:
         return 120.0
@@ -110,11 +155,31 @@ class MiniMaxFalVideo(BaseTool):
         from tools.video._shared import probe_output
 
         operation = inputs.get("operation", "text_to_video")
+        model = inputs.get("model", "hailuo-03")
+        if model not in {"hailuo-03", "h3-max"}:
+            return ToolResult(success=False, error=f"Unsupported model '{model}'")
+        resolution = self._resolution_for(model, inputs)
+        if model == "h3-max":
+            if operation == "reference_to_video":
+                return ToolResult(
+                    success=False,
+                    error=(
+                        "h3-max exposes text_to_video and image_to_video only. "
+                        "Use model 'hailuo-03' for reference_to_video."
+                    ),
+                )
+            if resolution not in {"768P", "480P"}:
+                return ToolResult(
+                    success=False,
+                    error="h3-max resolution must be '768P' or '480P'",
+                )
         payload: dict[str, Any] = {
             "prompt": inputs["prompt"],
             "duration": int(inputs.get("duration", 5)),
-            "resolution": "2K",
+            "resolution": resolution,
         }
+        if model == "h3-max" and inputs.get("prompt_expansion_mode"):
+            payload["prompt_expansion_mode"] = inputs["prompt_expansion_mode"]
         if operation != "image_to_video":
             payload["aspect_ratio"] = inputs.get("aspect_ratio", "16:9")
         if operation == "image_to_video":
@@ -141,7 +206,10 @@ class MiniMaxFalVideo(BaseTool):
                     success=False,
                     error="reference_to_video requires a reference image or video",
                 )
-        endpoint = f"fal-ai/minimax/hailuo-03/{operation.replace('_', '-')}"
+        # h3-max is served under the bare `minimax/` app path. The `fal-ai/`
+        # alias accepts the POST but hands back queue URLs that 404 on poll.
+        prefix = "minimax" if model == "h3-max" else "fal-ai/minimax"
+        endpoint = f"{prefix}/{model}/{operation.replace('_', '-')}"
         headers = {
             "Authorization": f"Key {api_key}",
             "Content-Type": "application/json",
@@ -168,7 +236,7 @@ class MiniMaxFalVideo(BaseTool):
                 if status in {"FAILED", "CANCELLED"}:
                     return ToolResult(
                         success=False,
-                        error=f"fal.ai MiniMax H3 generation {status.lower()}",
+                        error=f"fal.ai {endpoint} generation {status.lower()}",
                     )
             result_response = requests.get(
                 queued["response_url"], headers=headers, timeout=30
@@ -182,7 +250,7 @@ class MiniMaxFalVideo(BaseTool):
             output_path.write_bytes(download.content)
         except Exception as exc:
             return ToolResult(
-                success=False, error=f"fal.ai MiniMax H3 generation failed: {exc}"
+                success=False, error=f"fal.ai {endpoint} generation failed: {exc}"
             )
         return ToolResult(
             success=True,
